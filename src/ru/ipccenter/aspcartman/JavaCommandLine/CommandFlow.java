@@ -3,7 +3,6 @@ package ru.ipccenter.aspcartman.JavaCommandLine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,21 +14,16 @@ import java.util.concurrent.Executors;
  */
 public class CommandFlow
 {
-
-	private Command lastCommandPushed = null;
-	private ExecutorCompletionService<Integer> redirectService;
 	private ExecutorCompletionService<Integer> executionService;
-	private InputStream stdin;
-	private OutputStream stdout;
+	private Redirector redirector;
+
 	private int count = 0;
+	private Command lastCommandPushed;
 
 	public CommandFlow(InputStream stdin, OutputStream stdout)
 	{
-		this.stdin = stdin;
-		this.stdout = stdout;
-
 		executionService = NewService();
-		redirectService = NewService();
+		redirector = new Redirector(stdin,stdout);
 	}
 
 	private ExecutorCompletionService<Integer> NewService()
@@ -44,65 +38,26 @@ public class CommandFlow
 		CloseChain();
 	}
 
-	public void ConnectToStdin(OutputStream out)
-	{
-		ConnectStreams(stdin, out);
-	}
-
-	public void Wait() throws InterruptedException, IOException
-	{
-		WaitForExecutionService();
-		FreeStdin();
-		WaitForRedirectionService();
-		count = 0;
-	}
-
-	private void WaitForExecutionService() throws InterruptedException
-	{
-		for (int i = 0; i < count; ++ i)
-		{
-			executionService.take();
-		}
-	}
-
-	private void FreeStdin() throws IOException
-	{
-		stdin.close();
-	}
-
-	private void WaitForRedirectionService() throws InterruptedException
-	{
-		for (int i = 0; i < count + 1; ++ i)
-		{
-			redirectService.take();
-		}
-	}
-
 	private void PushCommandsToChain(Command[] commands) throws InterruptedException
 	{
 		for (Command command : commands)
 		{
-			Push(command);
+			PushToExecution(command);
+			PushToRedirection(command);
+			lastCommandPushed = command;
+			count++;
 		}
-	}
-
-	private void Push(Command command) throws InterruptedException
-	{
-		PushToExecution(command);
-		PushToRedirection(command);
-		lastCommandPushed = command;
-		count++;
 	}
 
 	private void PushToRedirection(Command command) throws InterruptedException
 	{
 		if (lastCommandPushed == null)
 		{
-			ConnectToStdin(command.GetOutputStream());
+			redirector.ConnectToStdin(command.GetOutputStream());
 		}
 		else
 		{
-			ConnectStreams(lastCommandPushed.GetInputStream(), command.GetOutputStream());
+			redirector.ConnectStreams(lastCommandPushed.GetInputStream(), command.GetOutputStream());
 		}
 	}
 
@@ -118,60 +73,28 @@ public class CommandFlow
 			throw new RuntimeException("Closing empty chain");
 		}
 
-		ConnectToStdout(lastCommandPushed.GetInputStream());
+		redirector.ConnectToStdout(lastCommandPushed.GetInputStream());
 		lastCommandPushed = null;
 	}
 
-	private void ConnectToStdout(InputStream in)
+	public void Wait() throws InterruptedException, IOException
 	{
-		ConnectStreams(in, stdout);
+		WaitForExecutionService();
+		FreeStdin();
+		redirector.Wait();
+		count = 0;
 	}
 
-	private void ConnectStreams(InputStream in, OutputStream out)
+	private void FreeStdin() throws IOException
 	{
-		if (in == null || out == null)
-		{
-			return; /* Silence! */
-		}
-
-		Callable<Integer> task = RedirectionTask(in, out);
-		redirectService.submit(task);
+		redirector.TimbleStdin();
 	}
 
-	private Callable<Integer> RedirectionTask(final InputStream in, final OutputStream out)
+	private void WaitForExecutionService() throws InterruptedException
 	{
-		return new Callable<Integer>()
+		for (int i = 0; i < count; ++ i)
 		{
-			@Override
-			public Integer call()
-			{
-				return RedirectStreams(in, out);
-			}
-		};
-	}
-
-	private Integer RedirectStreams(InputStream in, OutputStream out)
-	{
-		try
-		{
-			Redirect(in, out);
+			executionService.take();
 		}
-		catch (IOException e)
-		{
-			e.printStackTrace();
-		}
-		return 0;
-	}
-
-	private void Redirect(InputStream in, OutputStream out) throws IOException
-	{
-		byte[] buffer = new byte[1024];
-		int count;
-		while ((count = in.read(buffer)) > 0)
-		{
-			out.write(buffer, 0, count);
-		}
-		out.flush();
-		out.close();
 	}
 }
