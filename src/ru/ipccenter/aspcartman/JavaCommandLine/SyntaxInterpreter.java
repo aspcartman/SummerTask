@@ -17,8 +17,8 @@ public class SyntaxInterpreter
 		Command[] myCommands = {};
 		for (String aCommandWithArgs : commandsWithArgs)
 		{
-			Command command = CommandFromStringWithArgs(aCommandWithArgs);
-			myCommands = ArrayUtils.add(myCommands, command);
+			Command parsedCommand = CommandFromStringWithArgs(aCommandWithArgs);
+			myCommands = ArrayUtils.add(myCommands, parsedCommand);
 		}
 		return myCommands;
 	}

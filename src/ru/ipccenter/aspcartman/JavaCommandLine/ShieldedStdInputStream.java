@@ -41,6 +41,7 @@ public class ShieldedStdInputStream extends InputStream
 						int count;
 						while ((count = System.in.read(buffer)) != - 1)
 						{
+							/* What if staticPos is closed at the moment? */
 							staticPOS.write(buffer, 0, count);
 							staticPOS.flush();
 						}
@@ -94,7 +95,6 @@ public class ShieldedStdInputStream extends InputStream
 
 	public static void Revive()
 	{
-		System.err.println("REVIVING!");
 		PipedInputStream oldPIS = staticPIS;
 		PipedOutputStream oldPOS = staticPOS;
 

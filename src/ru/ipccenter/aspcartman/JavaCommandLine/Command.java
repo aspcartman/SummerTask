@@ -1,28 +1,94 @@
 package ru.ipccenter.aspcartman.JavaCommandLine;
 
-public class Command
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.concurrent.Callable;
+
+/**
+ * MIPT
+ * Autor: aspcartman
+ * Date: 11.08.13
+ */
+public class Command implements Callable<Integer>
 {
+	private final Object Ready;
 	private String[] params;
+	private volatile boolean streamsAreReady = false;
+	private volatile InputStream inputStream = null;
+	private volatile OutputStream outputStream = null;
 
-	public Command(String[] commandParams)
+	public Command(String[] params)
 	{
-		this.params = commandParams;
+		this.params = params;
+		Ready = new Object();
 	}
 
-	public String toString()
+	public Integer call()
 	{
-		String string = "";
-		for (String arg : this.params)
+		ProcessBuilder processBuilder = new ProcessBuilder(params);
+		processBuilder.redirectErrorStream(true);
+		int result = 0;
+
+		try
 		{
-			string = string.concat(" ");
-			string = string.concat(arg);
+			Process process = processBuilder.start();
+			PubliciseStreamsOfProcess(process);
+			WaitForProcess(process);
 		}
-		string = string.trim();
-		return string;
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			ReleaseStreamsAccessorsLock();
+		}
+
+		return result;
 	}
 
-	public String[] params()
+	private void WaitForProcess(Process process) throws InterruptedException
 	{
-		return params;
+		synchronized (process)
+		{
+			process.wait();
+		}
+	}
+
+	private void PubliciseStreamsOfProcess(Process process)
+	{
+		inputStream = process.getInputStream();
+		outputStream = process.getOutputStream();
+		ReleaseStreamsAccessorsLock();
+	}
+
+	private void ReleaseStreamsAccessorsLock()
+	{
+		synchronized (Ready)
+		{
+			streamsAreReady = true;
+			Ready.notifyAll();
+		}
+	}
+
+	public InputStream GetInputStream() throws InterruptedException
+	{
+		synchronized (Ready)
+		{
+			if (! streamsAreReady)
+			{
+				Ready.wait();
+			}
+			return inputStream;
+		}
+	}
+
+	public OutputStream GetOutputStream() throws InterruptedException
+	{
+		synchronized (Ready)
+		{
+			if (! streamsAreReady)
+			{
+				Ready.wait();
+			}
+			return outputStream;
+		}
 	}
 }
